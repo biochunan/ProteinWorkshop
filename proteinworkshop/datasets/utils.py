@@ -3,11 +3,11 @@
 
 import concurrent.futures
 import functools
+import logging
 import os
 import os.path
 import pathlib
 import tarfile
-import logging
 import time
 from typing import List, Optional
 
@@ -38,8 +38,6 @@ def flatten_dir(dir: os.PathLike):
                 )
             except OSError:
                 print(f"Could not move {os.path.join(dirpath, filename)}")
-
-
 
 
 def download_pdb_mmtf(
@@ -87,7 +85,7 @@ def download_pdb_mmtf(
             except Exception as e:
                 logging.warn(f"Attempt {retry_idx} to fetch pdb_id {pdb_id} failed: {e}")
             time.sleep(retry_interval/1000)
-            
+
         if data is None:
             logging.warn(f"Failed to fetch pdb_id {pdb_id}")
         return data
@@ -133,6 +131,89 @@ def download_pdb_mmtf(
     # for member in file.getnames():
     # mmtf_file = mmtf.MMTFFile.read(file.extractfile(member))
     ## Do some fancy stuff with the data...
+
+
+def download_pdb_bcif(
+    bcif_dir: pathlib.Path,
+    ids: Optional[List[str]] = None,
+    create_tar: bool = False,
+):
+    """Download PDB files in BinaryCIF format from RCSB PDB and create archive.
+    BinaryCIF files are downloaded into a new directory in this path
+    and the .tar archive is created here.
+    Obtain all PDB IDs using a query that includes all entries.
+    Each PDB entry has a title.
+
+    :param bcif_dir: Path to directory to store BinaryCIF files.
+    :type bcif_dir: pathlib.Path
+    :param ids: List of PDB IDs to download.
+    :type ids: Optional[List[str]]
+    :param create_tar: Whether to create a .tar archive from the downloaded files.
+    :type create_tar: bool
+    """
+    ### Download of PDB and archive creation ###
+
+    # bcif files are downloaded into a new directory in this path
+    # and the .tar archive is created here
+
+    # Obtain all PDB IDs using a query that includes all entries
+    # Each PDB entry has a title
+    if ids is None:
+        all_id_query = rcsb.FieldQuery("struct.title")
+        pdb_ids = rcsb.search(all_id_query)
+        pdb_ids = [pdb_id.lower() for pdb_id in pdb_ids]
+    else:
+        pdb_ids = ids
+
+    # Name for download directory
+    if not os.path.isdir(bcif_dir):
+        os.mkdir(bcif_dir)
+
+    def catched_rcsb_fetch(pdb_id, max_retries=5, retry_interval=100):
+        data = None
+        for retry_idx in range(max_retries):
+            try:
+                data = rcsb.fetch(pdb_id, format="bcif", target_path=bcif_dir)
+                break
+            except Exception as e:
+                logging.warn(f"Attempt {retry_idx} to fetch pdb_id {pdb_id} failed: {e}")
+            time.sleep(retry_interval/1000)
+
+        if data is None:
+            logging.warn(f"Failed to fetch pdb_id {pdb_id}")
+        return data
+
+    # Download all PDB IDs with parallelized HTTP requests
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = []
+        num_requests = len(pdb_ids)
+        pbar = tqdm(pdb_ids)
+        for pdb_id in pbar:
+            pbar.set_description(
+                f"Submitting PDB download request for {pdb_id}"
+            )
+            futures.append(
+                executor.submit(catched_rcsb_fetch, pdb_id)
+            )
+        pbar = tqdm(concurrent.futures.as_completed(futures))
+        for request_index, future in enumerate(pbar):
+            pbar.set_description(
+                f"Waiting for PDB download request #{request_index + 1}/{num_requests} to complete"
+            )
+            # Wait for the future to complete
+            future.result()
+
+    if create_tar:
+        # Create .tar archive file from BinaryCIF files in directory
+        with tarfile.open(f"{bcif_dir}.tar", mode="w") as file:
+            pbar = tqdm(pdb_ids)
+            for pdb_id in pbar:
+                pbar.set_description(
+                    f"Adding downloaded PDB {pdb_id} to {f'{bcif_dir}.tar'}"
+                )
+                file.add(
+                    os.path.join(bcif_dir, f"{pdb_id}.bcif"), f"{pdb_id}.bcif"
+                )
 
 
 @functools.lru_cache()

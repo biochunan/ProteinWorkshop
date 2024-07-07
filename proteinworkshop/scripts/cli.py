@@ -126,9 +126,13 @@ def main():
     elif args.command == "download":
         if args.dataset == "pdb":
             # lazy import
-            from .download_pdb_mmtf import download_pdb_mmtf
+            # from .download_pdb_mmtf import download_pdb_mmtf
 
-            download_pdb_mmtf()
+            # download_pdb_mmtf()
+
+            from .download_pdb_bcif import download_pdb_bcif
+
+            download_pdb_bcif()
 
         elif args.dataset in constants.FOLDCOMP_DATASET_NAMES:
             # lazy import
