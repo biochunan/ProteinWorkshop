@@ -9,6 +9,7 @@ install_dependencies:
 	workshop install pyg
 	@echo "Install other dependencies"
 	pip install torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.1.2+cu118.html
+	pip install gdown>=5.1.0
 	@echo "Clearing cache"
 	pip cache purge && conda clean -a -y
 
